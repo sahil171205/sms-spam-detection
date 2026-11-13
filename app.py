@@ -3,268 +3,283 @@ import streamlit as st
 import pickle
 import streamlit.components.v1 as components
 
+# ---------------- PAGE CONFIG ----------------
 st.set_page_config(
-    page_title="CyberShield AI",
-    page_icon="🛡️",
+    page_title="SMS Spam Detection",
+    page_icon="📩",
     layout="wide"
 )
 
-# Load Machine Learning Model
-with open("sms_spam_model (1).pkl", "rb") as file:
-    data = pickle.load(file)
+# ---------------- CUSTOM CSS ----------------
+st.markdown("""
+<style>
+.stApp {
+    background: #07111f;
+    color: white;
+}
+h1, h2, h3, p, label {
+    color: white !important;
+}
+.stButton > button {
+    background: #0878d1;
+    color: white;
+    border-radius: 10px;
+    border: none;
+    padding: 10px 25px;
+    font-weight: bold;
+}
+.stButton > button:hover {
+    background: #00aaff;
+    color: white;
+}
+</style>
+""", unsafe_allow_html=True)
 
-model = data["model"]
-vectorizer = data["vectorizer"]
+# ---------------- LOAD MODEL ----------------
+@st.cache_resource
+def load_model():
+    with open("sms_spam_model (1).pkl", "rb") as file:
+        data = pickle.load(file)
+    return data["model"], data["vectorizer"]
 
-# Session State
+try:
+    model, vectorizer = load_model()
+except Exception as e:
+    st.error("Model file load nahi zali. GitHub madhye pickle file name check kar.")
+    st.code(str(e))
+    st.stop()
+
+# ---------------- SESSION STATE ----------------
 if "history" not in st.session_state:
     st.session_state.history = []
 
 if "result" not in st.session_state:
     st.session_state.result = None
 
-# Professional CSS
-st.markdown("""
-<style>
-.stApp {
-    background: #080f1e;
-    color: white;
-}
+if "message" not in st.session_state:
+    st.session_state.message = ""
 
-header {
-    background: transparent !important;
-}
-
-.block-container {
-    padding-top: 2rem;
-}
-
-h1, h2, h3, p, label {
-    color: white !important;
-}
-
-.hero {
-    background: linear-gradient(120deg,#101f3c,#123b60);
-    padding: 30px;
-    border-radius: 18px;
-    border: 1px solid #1675b9;
-    margin-bottom: 25px;
-}
-
-.hero h1 {
-    color: #35c5ff !important;
-}
-
-.metric {
-    background: #111d32;
-    border: 1px solid #23466c;
-    padding: 20px;
-    border-radius: 14px;
-    text-align: center;
-}
-
-.metric h2 {
-    color: #35c5ff !important;
-}
-
-.stTextArea textarea {
-    background: #101d30;
-    color: white;
-    border: 1px solid #2684c7;
-    border-radius: 12px;
-}
-
-.stButton button {
-    background: linear-gradient(90deg,#0879d1,#00b5e2);
-    color: white;
-    border: none;
-    border-radius: 10px;
-    height: 48px;
-    font-weight: bold;
-    width: 100%;
-}
-
-.stButton button:hover {
-    border: 1px solid #40d5ff;
-    color: white;
-}
-
-</style>
-""", unsafe_allow_html=True)
-
-# Sidebar
-st.sidebar.title("🛡️ CYBERSHIELD AI")
-st.sidebar.caption("SMS SECURITY SYSTEM")
+# ---------------- SIDEBAR ----------------
+st.sidebar.title("🛡️ CYBER SECURITY")
+st.sidebar.write("SMS Protection System")
 
 page = st.sidebar.radio(
-    "NAVIGATION",
+    "Navigation",
     ["Dashboard", "Detection History", "About Project"]
 )
 
 st.sidebar.markdown("---")
-st.sidebar.success("AI Model Loaded")
+st.sidebar.success("AI Model: Online")
+st.sidebar.info("System Status: Active")
 
-# Dashboard
+# ---------------- DASHBOARD ----------------
 if page == "Dashboard":
 
-    st.markdown("""
-    <div class="hero">
-        <h1>🛡️ CYBERSHIELD AI</h1>
-        <h3>Intelligent SMS Spam Detection System</h3>
-        <p>Protect yourself from suspicious messages using Machine Learning.</p>
-    </div>
-    """, unsafe_allow_html=True)
+    st.title("📩 SMS SPAM DETECTION")
+    st.write("AI Based SMS Security Monitoring Dashboard")
 
     total = len(st.session_state.history)
     spam_count = sum(
-        1 for x in st.session_state.history
-        if x["result"] == "spam"
+        1 for item in st.session_state.history
+        if item["result"] == "spam"
     )
-    normal_count = total - spam_count
+    normal_count = sum(
+        1 for item in st.session_state.history
+        if item["result"] == "normal"
+    )
 
-    c1, c2, c3 = st.columns(3)
+    col1, col2, col3 = st.columns(3)
 
-    with c1:
-        st.markdown(
-            f'<div class="metric"><h2>{total}</h2><p>Total Scanned</p></div>',
-            unsafe_allow_html=True
-        )
+    col1.metric("Total Scans", total)
+    col2.metric("Spam Messages", spam_count)
+    col3.metric("Normal Messages", normal_count)
 
-    with c2:
-        st.markdown(
-            f'<div class="metric"><h2 style="color:#ff4545">{spam_count}</h2><p>Spam Detected</p></div>',
-            unsafe_allow_html=True
-        )
-
-    with c3:
-        st.markdown(
-            f'<div class="metric"><h2 style="color:#00e88a">{normal_count}</h2><p>Normal Messages</p></div>',
-            unsafe_allow_html=True
-        )
-
-    st.markdown("### 📩 SMS Security Scanner")
+    st.markdown("---")
+    st.subheader("🔍 Scan Your SMS")
 
     message = st.text_area(
-        "Enter SMS Message",
-        placeholder="Paste your SMS message here...",
-        height=150
+        "Enter your SMS here:",
+        value=st.session_state.message,
+        height=130,
+        placeholder="Type or paste your SMS..."
     )
 
-    if st.button("🔍 SCAN MESSAGE"):
+    if st.button("🚀 SCAN MESSAGE"):
 
         if message.strip():
 
-            vector = vectorizer.transform([message])
-            prediction = model.predict(vector)[0]
+            message_vector = vectorizer.transform([message])
+            prediction = model.predict(message_vector)[0]
+            prediction = str(prediction).lower().strip()
 
-            result = str(prediction).lower()
+            # Support common model labels
+            if prediction in ["spam", "1"]:
+                result = "spam"
+            elif prediction in ["ham", "normal", "not spam", "0"]:
+                result = "normal"
+            else:
+                result = "unknown"
 
             st.session_state.result = result
+            st.session_state.message = message
 
-            st.session_state.history.append({
+            st.session_state.history.insert(0, {
                 "message": message,
                 "result": result
             })
 
         else:
-            st.warning("Please enter a message.")
+            st.warning("Please enter an SMS first.")
 
-    # Result Display
+    # ---------------- SPAM RESULT ----------------
     if st.session_state.result == "spam":
 
         st.markdown("""
-        <div style="background:#35121a;border:2px solid #ff3333;
-        padding:25px;border-radius:15px;text-align:center;">
-        <h1 style="color:#ff3333 !important;">🚨 SPAM DETECTED</h1>
-        <h3>DANGEROUS MESSAGE</h3>
-        <p>Do not click suspicious links.</p>
+        <div style="
+            background:#421414;
+            border:2px solid #ff3030;
+            padding:25px;
+            border-radius:15px;
+            text-align:center;
+        ">
+            <h1 style="color:#ff3030 !important;">
+                ⚠️ SPAM MESSAGE DETECTED
+            </h1>
+            <h3 style="color:white !important;">
+                DANGEROUS MESSAGE - BE CAREFUL
+            </h3>
+            <div style="
+                width:35px;
+                height:35px;
+                border-radius:50%;
+                background:#ff2020;
+                margin:20px auto;
+                box-shadow:0 0 30px red;
+                animation:redblink 1s infinite;
+            "></div>
+            <h3 style="color:#ff3030 !important;">
+                🔴 RED ALERT
+            </h3>
         </div>
-        """, unsafe_allow_html=True)
-
-        components.html("""
         <style>
-        @keyframes blink {
-            0%,100% {opacity:1;box-shadow:0 0 30px red;}
-            50% {opacity:.2;box-shadow:0 0 3px red;}
-        }
-        .light {
-            width:35px;height:35px;border-radius:50%;
-            background:red;margin:auto;
-            animation:blink .6s infinite;
+        @keyframes redblink {
+            0%,100% {opacity:1; box-shadow:0 0 30px red;}
+            50% {opacity:0.2; box-shadow:0 0 5px red;}
         }
         </style>
-        <div class="light"></div>
-        <p style="color:red;text-align:center;">RED ALERT</p>
-        <button onclick="document.getElementById('alarm').play()">
-        🔊 Play Alarm</button>
-        <audio id="alarm" loop>
-        <source src="https://actions.google.com/sounds/v1/alarms/alarm_clock.ogg">
-        </audio>
-        """, height=130)
+        """, unsafe_allow_html=True)
 
+        st.error("⚠️ Warning: This SMS may be spam or fraudulent.")
+
+        st.warning("Audio alert is available below. Browser may require a click to play sound.")
+
+        if st.button("🔊 PLAY SPAM ALARM"):
+            components.html("""
+            <audio autoplay>
+                <source src="https://actions.google.com/sounds/v1/alarms/alarm_clock.ogg" type="audio/ogg">
+            </audio>
+            """, height=50)
+
+    # ---------------- NORMAL RESULT ----------------
     elif st.session_state.result == "normal":
 
         st.markdown("""
-        <div style="background:#103528;border:2px solid #00e88a;
-        padding:25px;border-radius:15px;text-align:center;">
-        <h1 style="color:#00e88a !important;">✅ NORMAL MESSAGE</h1>
-        <h3>NO SPAM DETECTED</h3>
+        <div style="
+            background:#103528;
+            border:2px solid #00ff88;
+            padding:25px;
+            border-radius:15px;
+            text-align:center;
+        ">
+            <h1 style="color:#00ff88 !important;">
+                ✅ NORMAL MESSAGE
+            </h1>
+            <h3 style="color:white !important;">
+                NO SPAM DETECTED
+            </h3>
+            <div style="
+                width:35px;
+                height:35px;
+                border-radius:50%;
+                background:#00ff88;
+                margin:20px auto;
+                box-shadow:0 0 30px #00ff88;
+                animation:greenblink 1s infinite;
+            "></div>
+            <h3 style="color:#00ff88 !important;">
+                🟢 GREEN SAFE
+            </h3>
         </div>
-        """, unsafe_allow_html=True)
 
-        components.html("""
         <style>
-        @keyframes glow {
-            0%,100% {opacity:1;box-shadow:0 0 25px #00ff88;}
-            50% {opacity:.4;box-shadow:0 0 5px #00ff88;}
-        }
-        .light {
-            width:35px;height:35px;border-radius:50%;
-            background:#00ff88;margin:auto;
-            animation:glow 1.5s infinite;
+        @keyframes greenblink {
+            0%,100% {opacity:1; box-shadow:0 0 30px #00ff88;}
+            50% {opacity:0.25; box-shadow:0 0 5px #00ff88;}
         }
         </style>
-        <div class="light"></div>
-        <p style="color:green;text-align:center;">GREEN SAFE</p>
-        """, height=90)
+        """, unsafe_allow_html=True)
 
-# History
+        st.success("✅ This message is classified as NORMAL.")
+
+    elif st.session_state.result == "unknown":
+        st.warning("Model returned an unknown label. Check your model's prediction classes.")
+
+# ---------------- HISTORY ----------------
 elif page == "Detection History":
 
-    st.title("📜 Detection History")
+    st.title("📋 DETECTION HISTORY")
 
     if st.session_state.history:
 
-        for i, item in enumerate(reversed(st.session_state.history), 1):
+        for i, item in enumerate(st.session_state.history, start=1):
+
+            st.markdown(f"**Scan {i}:** {item['message']}")
+
             if item["result"] == "spam":
-                st.error(f"{i}. SPAM - {item['message']}")
+                st.error("🔴 SPAM")
+            elif item["result"] == "normal":
+                st.success("🟢 NORMAL")
             else:
-                st.success(f"{i}. NORMAL - {item['message']}")
+                st.warning("UNKNOWN")
+
+            st.markdown("---")
+
+        if st.button("🗑️ CLEAR HISTORY"):
+            st.session_state.history = []
+            st.session_state.result = None
+            st.rerun()
 
     else:
-        st.info("No messages scanned yet.")
+        st.info("No detection history available.")
 
-# About
+# ---------------- ABOUT ----------------
 elif page == "About Project":
 
-    st.title("ℹ️ About CyberShield AI")
+    st.title("ℹ️ ABOUT PROJECT")
 
-    st.write("""
-    CyberShield AI is an SMS Spam Detection project
-    developed using Python, Machine Learning and Streamlit.
+    st.markdown("""
+    ### SMS Spam Detection System
+
+    This project uses Machine Learning to identify spam SMS messages.
+
+    **Technologies Used:**
+    - Python
+    - Streamlit
+    - Machine Learning
+    - Scikit-learn
+    - Pickle
 
     **Main Features:**
-    - SMS Spam Classification
-    - Red and Green Alert System
+    - SMS Spam Detection
+    - Normal Message Detection
+    - Red Alert for Spam
+    - Green Safe Indicator for Normal
     - Detection History
-    - Professional Security Dashboard
 
-    **Technology Used:**
-    - Python
-    - Machine Learning
-    - Streamlit
-    - Scikit-learn
+    **Purpose:**
+    To help users identify suspicious SMS messages
+    and improve digital security.
     """)
 
 st.markdown("---")
-st.caption("CYBERSHIELD AI | SMS SECURITY SYSTEM")
+st.caption("SMS Spam Detection | AI Based Cyber Security Project")
