@@ -1,7 +1,7 @@
 
 import streamlit as st
-import pickle
 import streamlit.components.v1 as components
+import pickle
 
 # ---------------- PAGE CONFIG ----------------
 st.set_page_config(
@@ -14,7 +14,7 @@ st.set_page_config(
 st.markdown("""
 <style>
 .stApp {
-    background: #07111f;
+    background-color: #07111f;
     color: white;
 }
 h1, h2, h3, p, label {
@@ -24,13 +24,16 @@ h1, h2, h3, p, label {
     background: #0878d1;
     color: white;
     border-radius: 10px;
-    border: none;
-    padding: 10px 25px;
+    border: 1px solid #00aaff;
+    padding: 10px 20px;
     font-weight: bold;
 }
 .stButton > button:hover {
     background: #00aaff;
     color: white;
+}
+[data-testid="stSidebar"] {
+    background-color: #101d30;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -40,12 +43,13 @@ h1, h2, h3, p, label {
 def load_model():
     with open("sms_spam_model (1).pkl", "rb") as file:
         data = pickle.load(file)
+
     return data["model"], data["vectorizer"]
 
 try:
     model, vectorizer = load_model()
 except Exception as e:
-    st.error("Model file load nahi zali. GitHub madhye pickle file name check kar.")
+    st.error("Model file load failed. Check your pickle file name.")
     st.code(str(e))
     st.stop()
 
@@ -59,9 +63,12 @@ if "result" not in st.session_state:
 if "message" not in st.session_state:
     st.session_state.message = ""
 
+if "scan_id" not in st.session_state:
+    st.session_state.scan_id = 0
+
 # ---------------- SIDEBAR ----------------
 st.sidebar.title("🛡️ CYBER SECURITY")
-st.sidebar.write("SMS Protection System")
+st.sidebar.caption("AI SMS Protection System")
 
 page = st.sidebar.radio(
     "Navigation",
@@ -69,50 +76,49 @@ page = st.sidebar.radio(
 )
 
 st.sidebar.markdown("---")
-st.sidebar.success("AI Model: Online")
-st.sidebar.info("System Status: Active")
+st.sidebar.success("AI Model: ONLINE")
+st.sidebar.info("System Status: ACTIVE")
 
 # ---------------- DASHBOARD ----------------
 if page == "Dashboard":
 
     st.title("📩 SMS SPAM DETECTION")
-    st.write("AI Based SMS Security Monitoring Dashboard")
+    st.write("AI Based Cyber Security Monitoring Dashboard")
 
     total = len(st.session_state.history)
     spam_count = sum(
-        1 for item in st.session_state.history
-        if item["result"] == "spam"
+        1 for x in st.session_state.history
+        if x["result"] == "spam"
     )
     normal_count = sum(
-        1 for item in st.session_state.history
-        if item["result"] == "normal"
+        1 for x in st.session_state.history
+        if x["result"] == "normal"
     )
 
-    col1, col2, col3 = st.columns(3)
-
-    col1.metric("Total Scans", total)
-    col2.metric("Spam Messages", spam_count)
-    col3.metric("Normal Messages", normal_count)
+    c1, c2, c3 = st.columns(3)
+    c1.metric("Total Scans", total)
+    c2.metric("Spam Messages", spam_count)
+    c3.metric("Normal Messages", normal_count)
 
     st.markdown("---")
-    st.subheader("🔍 Scan Your SMS")
+    st.subheader("🔍 SMS Security Scanner")
 
     message = st.text_area(
-        "Enter your SMS here:",
+        "Enter your SMS:",
         value=st.session_state.message,
         height=130,
-        placeholder="Type or paste your SMS..."
+        placeholder="Enter or paste your SMS here..."
     )
 
     if st.button("🚀 SCAN MESSAGE"):
 
         if message.strip():
 
-            message_vector = vectorizer.transform([message])
-            prediction = model.predict(message_vector)[0]
-            prediction = str(prediction).lower().strip()
+            msg_vector = vectorizer.transform([message])
+            prediction = str(
+                model.predict(msg_vector)[0]
+            ).lower().strip()
 
-            # Support common model labels
             if prediction in ["spam", "1"]:
                 result = "spam"
             elif prediction in ["ham", "normal", "not spam", "0"]:
@@ -122,6 +128,7 @@ if page == "Dashboard":
 
             st.session_state.result = result
             st.session_state.message = message
+            st.session_state.scan_id += 1
 
             st.session_state.history.insert(0, {
                 "message": message,
@@ -169,14 +176,24 @@ if page == "Dashboard":
         </style>
         """, unsafe_allow_html=True)
 
-        st.error("⚠️ Warning: This SMS may be spam or fraudulent.")
+        st.error("⚠️ Warning: This SMS may be fraudulent.")
 
-        st.warning("Audio alert is available below. Browser may require a click to play sound.")
+        # Audio alert - browser autoplay may be blocked
+        components.html("""
+        <audio autoplay>
+            <source
+            src="https://actions.google.com/sounds/v1/alarms/alarm_clock.ogg"
+            type="audio/ogg">
+        </audio>
+        """, height=20)
 
-        if st.button("🔊 PLAY SPAM ALARM"):
+        # Manual fallback
+        if st.button("🔊 PLAY ALARM"):
             components.html("""
             <audio autoplay>
-                <source src="https://actions.google.com/sounds/v1/alarms/alarm_clock.ogg" type="audio/ogg">
+                <source
+                src="https://actions.google.com/sounds/v1/alarms/alarm_clock.ogg"
+                type="audio/ogg">
             </audio>
             """, height=50)
 
@@ -222,23 +239,24 @@ if page == "Dashboard":
         st.success("✅ This message is classified as NORMAL.")
 
     elif st.session_state.result == "unknown":
-        st.warning("Model returned an unknown label. Check your model's prediction classes.")
+        st.warning("Unknown prediction label. Please check model classes.")
 
-# ---------------- HISTORY ----------------
+# ---------------- DETECTION HISTORY ----------------
 elif page == "Detection History":
 
     st.title("📋 DETECTION HISTORY")
 
     if st.session_state.history:
 
-        for i, item in enumerate(st.session_state.history, start=1):
-
+        for i, item in enumerate(
+            st.session_state.history, start=1
+        ):
             st.markdown(f"**Scan {i}:** {item['message']}")
 
             if item["result"] == "spam":
-                st.error("🔴 SPAM")
+                st.error("🔴 SPAM MESSAGE")
             elif item["result"] == "normal":
-                st.success("🟢 NORMAL")
+                st.success("🟢 NORMAL MESSAGE")
             else:
                 st.warning("UNKNOWN")
 
@@ -247,12 +265,13 @@ elif page == "Detection History":
         if st.button("🗑️ CLEAR HISTORY"):
             st.session_state.history = []
             st.session_state.result = None
+            st.session_state.message = ""
             st.rerun()
 
     else:
         st.info("No detection history available.")
 
-# ---------------- ABOUT ----------------
+# ---------------- ABOUT PROJECT ----------------
 elif page == "About Project":
 
     st.title("ℹ️ ABOUT PROJECT")
@@ -260,7 +279,8 @@ elif page == "About Project":
     st.markdown("""
     ### SMS Spam Detection System
 
-    This project uses Machine Learning to identify spam SMS messages.
+    This project uses Machine Learning to identify
+    spam and normal SMS messages.
 
     **Technologies Used:**
     - Python
@@ -269,17 +289,20 @@ elif page == "About Project":
     - Scikit-learn
     - Pickle
 
-    **Main Features:**
+    **Features:**
     - SMS Spam Detection
     - Normal Message Detection
-    - Red Alert for Spam
-    - Green Safe Indicator for Normal
+    - Red Alert Indicator
+    - Green Safe Indicator
+    - Alarm Sound
     - Detection History
 
-    **Purpose:**
-    To help users identify suspicious SMS messages
-    and improve digital security.
+    **Project Objective:**
+
+    To identify suspicious SMS messages and
+    improve digital security.
     """)
 
+# ---------------- FOOTER ----------------
 st.markdown("---")
-st.caption("SMS Spam Detection | AI Based Cyber Security Project")
+st.caption("🛡️ SMS Spam Detection | AI Cyber Security Project")
