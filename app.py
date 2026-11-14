@@ -42,18 +42,24 @@ h1, h2, h3, p, label {
 """, unsafe_allow_html=True)
 
 
-# ---------------- LOAD DATASET & TRAIN MODEL ----------------
+# ---------------- ONLINE DATASET & MODEL TRAINING ----------------
 @st.cache_resource
 def train_model():
 
-    df = pd.read_csv("spam.csv", encoding="latin-1")
+    DATASET_URL = (
+        "https://archive.ics.uci.edu/static/public/"
+        "228/sms+spam+collection.zip"
+    )
 
-    if "v1" in df.columns and "v2" in df.columns:
-        df = df[["v1", "v2"]]
-        df.columns = ["label", "message"]
-    else:
-        df = df.iloc[:, :2]
-        df.columns = ["label", "message"]
+    # Download dataset directly from UCI
+    df = pd.read_csv(
+        DATASET_URL,
+        sep="\t",
+        header=None,
+        names=["label", "message"],
+        compression="zip",
+        encoding="utf-8"
+    )
 
     df = df.dropna()
 
@@ -117,11 +123,12 @@ def train_model():
 
 # ---------------- MODEL STATUS ----------------
 try:
-    model, vectorizer, dataset_count = train_model()
+    with st.spinner("Downloading Online Dataset and Training AI Model..."):
+        model, vectorizer, dataset_count = train_model()
 
 except Exception as e:
-    st.error("Model Training Failed!")
-    st.write("Check spam.csv in your GitHub repository.")
+    st.error("Online Dataset Loading / Model Training Failed!")
+    st.warning("Please check your Internet connection or UCI Dataset availability.")
     st.code(str(e))
     st.stop()
 
@@ -389,7 +396,7 @@ elif page == "About Project":
 
     **Features:**
     - SMS Spam Detection
-    - Automatic Model Training
+    - Automatic Online Dataset Loading
     - Lottery Scam Detection
     - Normal Message Detection
     - Red Alert Indicator
