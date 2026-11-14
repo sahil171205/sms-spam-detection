@@ -3,6 +3,10 @@ import streamlit as st
 import streamlit.components.v1 as components
 import pandas as pd
 import re
+import zipfile
+import io
+import urllib.request
+
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.naive_bayes import MultinomialNB
 
@@ -51,15 +55,26 @@ def train_model():
         "228/sms+spam+collection.zip"
     )
 
-    # Download dataset directly from UCI
-    df = pd.read_csv(
+    # Download ZIP from UCI
+    response = urllib.request.urlopen(
         DATASET_URL,
-        sep="\t",
-        header=None,
-        names=["label", "message"],
-        compression="zip",
-        encoding="utf-8"
+        timeout=30
     )
+
+    zip_data = zipfile.ZipFile(
+        io.BytesIO(response.read())
+    )
+
+    # Read only SMSSpamCollection file
+    with zip_data.open("SMSSpamCollection") as file:
+
+        df = pd.read_csv(
+            file,
+            sep="\t",
+            header=None,
+            names=["label", "message"],
+            encoding="utf-8"
+        )
 
     df = df.dropna()
 
@@ -103,7 +118,10 @@ def train_model():
         columns=["label", "message"]
     )
 
-    df = pd.concat([df, extra_df], ignore_index=True)
+    df = pd.concat(
+        [df, extra_df],
+        ignore_index=True
+    )
 
     vectorizer = TfidfVectorizer(
         lowercase=True,
@@ -123,12 +141,16 @@ def train_model():
 
 # ---------------- MODEL STATUS ----------------
 try:
-    with st.spinner("Downloading Online Dataset and Training AI Model..."):
+    with st.spinner(
+        "Downloading Online Dataset and Training AI Model..."
+    ):
         model, vectorizer, dataset_count = train_model()
 
 except Exception as e:
     st.error("Online Dataset Loading / Model Training Failed!")
-    st.warning("Please check your Internet connection or UCI Dataset availability.")
+    st.warning(
+        "Please check Internet connection or UCI Dataset availability."
+    )
     st.code(str(e))
     st.stop()
 
@@ -354,7 +376,9 @@ elif page == "Detection History":
             st.session_state.history, start=1
         ):
 
-            st.markdown(f"**Scan {i}:** {item['message']}")
+            st.markdown(
+                f"**Scan {i}:** {item['message']}"
+            )
 
             if item["result"] == "spam":
                 st.error("🔴 SPAM MESSAGE")
@@ -413,4 +437,6 @@ elif page == "About Project":
 
 # ---------------- FOOTER ----------------
 st.markdown("---")
-st.caption("🛡️ SMS Spam Detection | AI Cyber Security Project")
+st.caption(
+    "🛡️ SMS Spam Detection | AI Cyber Security Project"
+)
