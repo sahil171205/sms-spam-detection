@@ -43,6 +43,14 @@ extra_data = [
     ("ham", "Good morning have a nice day"),
     ("ham", "I am waiting for you"),
     ("ham", "Please send me the notes"),
+        ("spam", "You won lottery"),
+    ("spam", "You won a lottery"),
+    ("spam", "You have won lottery"),
+    ("spam", "Congratulations you won lottery"),
+    ("spam", "You are a lottery winner"),
+    ("spam", "You won 1000000 rupees"),
+    ("spam", "Claim your lottery prize now"),
+    ("spam", "Your lottery prize is waiting"),
     ("ham", "See you soon")
 ]
 
