@@ -1,7 +1,10 @@
 
 import streamlit as st
 import streamlit.components.v1 as components
-import pickle
+import pandas as pd
+import re
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.naive_bayes import MultinomialNB
 
 # ---------------- PAGE CONFIG ----------------
 st.set_page_config(
@@ -38,20 +41,111 @@ h1, h2, h3, p, label {
 </style>
 """, unsafe_allow_html=True)
 
-# ---------------- LOAD MODEL ----------------
+
+# ---------------- LOAD DATASET & TRAIN MODEL ----------------
 @st.cache_resource
-def load_model():
-    with open("sms_spam_model (1).pkl", "rb") as file:
-        data = pickle.load(file)
+def train_model():
 
-    return data["model"], data["vectorizer"]
+    df = pd.read_csv("spam.csv", encoding="latin-1")
 
+    if "v1" in df.columns and "v2" in df.columns:
+        df = df[["v1", "v2"]]
+        df.columns = ["label", "message"]
+    else:
+        df = df.iloc[:, :2]
+        df.columns = ["label", "message"]
+
+    df = df.dropna()
+
+    df["label"] = (
+        df["label"].astype(str).str.lower().str.strip()
+    )
+
+    df["message"] = df["message"].astype(str)
+
+    df = df[df["label"].isin(["spam", "ham"])]
+
+    # Additional training examples
+    extra_data = [
+        ("spam", "Hi you won lottery"),
+        ("spam", "You won a lottery"),
+        ("spam", "You have won lottery"),
+        ("spam", "Congratulations you won lottery"),
+        ("spam", "You won 1000000 rupees"),
+        ("spam", "Claim your lottery prize now"),
+        ("spam", "You are a lottery winner"),
+        ("spam", "You won a jackpot"),
+        ("spam", "Claim your free cash prize"),
+        ("spam", "Click here to claim your reward"),
+        ("spam", "You have won a free gift"),
+        ("spam", "Your number won a cash prize"),
+
+        ("ham", "Hi how are you"),
+        ("ham", "I will call you later"),
+        ("ham", "Where are you now"),
+        ("ham", "Meet me tomorrow"),
+        ("ham", "Thank you for your help"),
+        ("ham", "Are you coming to college today"),
+        ("ham", "Good morning have a nice day"),
+        ("ham", "I am waiting for you"),
+        ("ham", "Please send me the notes"),
+        ("ham", "See you soon")
+    ]
+
+    extra_df = pd.DataFrame(
+        extra_data,
+        columns=["label", "message"]
+    )
+
+    df = pd.concat([df, extra_df], ignore_index=True)
+
+    vectorizer = TfidfVectorizer(
+        lowercase=True,
+        ngram_range=(1, 2),
+        stop_words="english",
+        max_features=10000
+    )
+
+    X = vectorizer.fit_transform(df["message"])
+    y = df["label"]
+
+    model = MultinomialNB()
+    model.fit(X, y)
+
+    return model, vectorizer, len(df)
+
+
+# ---------------- MODEL STATUS ----------------
 try:
-    model, vectorizer = load_model()
+    model, vectorizer, dataset_count = train_model()
+
 except Exception as e:
-    st.error("Model file load failed. Check your pickle file name.")
+    st.error("Model Training Failed!")
+    st.write("Check spam.csv in your GitHub repository.")
     st.code(str(e))
     st.stop()
+
+
+# ---------------- SPAM RULES ----------------
+def check_suspicious_sms(message):
+
+    patterns = [
+        r"\bwon\s+(a\s+)?lottery\b",
+        r"\blottery\s+(winner|prize|ticket)\b",
+        r"\byou\s+have\s+won\b",
+        r"\bclaim\s+(your\s+)?(free\s+)?(prize|reward|cash)\b",
+        r"\bcash\s+prize\b",
+        r"\bjackpot\b",
+        r"\bselected\s+as\s+(a\s+)?(lucky\s+)?winner\b",
+        r"\bfree\s+entry\b",
+        r"\bclick\s+here\s+to\s+claim\b"
+    ]
+
+    return any(
+        re.search(pattern, message, re.IGNORECASE)
+        for pattern in patterns
+    )
+
 
 # ---------------- SESSION STATE ----------------
 if "history" not in st.session_state:
@@ -63,8 +157,6 @@ if "result" not in st.session_state:
 if "message" not in st.session_state:
     st.session_state.message = ""
 
-if "scan_id" not in st.session_state:
-    st.session_state.scan_id = 0
 
 # ---------------- SIDEBAR ----------------
 st.sidebar.title("🛡️ CYBER SECURITY")
@@ -79,6 +171,7 @@ st.sidebar.markdown("---")
 st.sidebar.success("AI Model: ONLINE")
 st.sidebar.info("System Status: ACTIVE")
 
+
 # ---------------- DASHBOARD ----------------
 if page == "Dashboard":
 
@@ -86,19 +179,24 @@ if page == "Dashboard":
     st.write("AI Based Cyber Security Monitoring Dashboard")
 
     total = len(st.session_state.history)
+
     spam_count = sum(
         1 for x in st.session_state.history
         if x["result"] == "spam"
     )
+
     normal_count = sum(
         1 for x in st.session_state.history
         if x["result"] == "normal"
     )
 
     c1, c2, c3 = st.columns(3)
+
     c1.metric("Total Scans", total)
     c2.metric("Spam Messages", spam_count)
     c3.metric("Normal Messages", normal_count)
+
+    st.metric("Training Dataset SMS", dataset_count)
 
     st.markdown("---")
     st.subheader("🔍 SMS Security Scanner")
@@ -115,20 +213,20 @@ if page == "Dashboard":
         if message.strip():
 
             msg_vector = vectorizer.transform([message])
+
             prediction = str(
                 model.predict(msg_vector)[0]
             ).lower().strip()
 
-            if prediction in ["spam", "1"]:
+            suspicious = check_suspicious_sms(message)
+
+            if prediction == "spam" or suspicious:
                 result = "spam"
-            elif prediction in ["ham", "normal", "not spam", "0"]:
-                result = "normal"
             else:
-                result = "unknown"
+                result = "normal"
 
             st.session_state.result = result
             st.session_state.message = message
-            st.session_state.scan_id += 1
 
             st.session_state.history.insert(0, {
                 "message": message,
@@ -137,6 +235,7 @@ if page == "Dashboard":
 
         else:
             st.warning("Please enter an SMS first.")
+
 
     # ---------------- SPAM RESULT ----------------
     if st.session_state.result == "spam":
@@ -178,7 +277,6 @@ if page == "Dashboard":
 
         st.error("⚠️ Warning: This SMS may be fraudulent.")
 
-        # Audio alert - browser autoplay may be blocked
         components.html("""
         <audio autoplay>
             <source
@@ -187,7 +285,6 @@ if page == "Dashboard":
         </audio>
         """, height=20)
 
-        # Manual fallback
         if st.button("🔊 PLAY ALARM"):
             components.html("""
             <audio autoplay>
@@ -196,6 +293,7 @@ if page == "Dashboard":
                 type="audio/ogg">
             </audio>
             """, height=50)
+
 
     # ---------------- NORMAL RESULT ----------------
     elif st.session_state.result == "normal":
@@ -227,7 +325,6 @@ if page == "Dashboard":
                 🟢 GREEN SAFE
             </h3>
         </div>
-
         <style>
         @keyframes greenblink {
             0%,100% {opacity:1; box-shadow:0 0 30px #00ff88;}
@@ -238,8 +335,6 @@ if page == "Dashboard":
 
         st.success("✅ This message is classified as NORMAL.")
 
-    elif st.session_state.result == "unknown":
-        st.warning("Unknown prediction label. Please check model classes.")
 
 # ---------------- DETECTION HISTORY ----------------
 elif page == "Detection History":
@@ -251,25 +346,27 @@ elif page == "Detection History":
         for i, item in enumerate(
             st.session_state.history, start=1
         ):
+
             st.markdown(f"**Scan {i}:** {item['message']}")
 
             if item["result"] == "spam":
                 st.error("🔴 SPAM MESSAGE")
-            elif item["result"] == "normal":
-                st.success("🟢 NORMAL MESSAGE")
             else:
-                st.warning("UNKNOWN")
+                st.success("🟢 NORMAL MESSAGE")
 
             st.markdown("---")
 
         if st.button("🗑️ CLEAR HISTORY"):
+
             st.session_state.history = []
             st.session_state.result = None
             st.session_state.message = ""
+
             st.rerun()
 
     else:
         st.info("No detection history available.")
+
 
 # ---------------- ABOUT PROJECT ----------------
 elif page == "About Project":
@@ -287,10 +384,13 @@ elif page == "About Project":
     - Streamlit
     - Machine Learning
     - Scikit-learn
-    - Pickle
+    - TF-IDF Vectorizer
+    - Naive Bayes
 
     **Features:**
     - SMS Spam Detection
+    - Automatic Model Training
+    - Lottery Scam Detection
     - Normal Message Detection
     - Red Alert Indicator
     - Green Safe Indicator
@@ -303,94 +403,7 @@ elif page == "About Project":
     improve digital security.
     """)
 
+
 # ---------------- FOOTER ----------------
 st.markdown("---")
 st.caption("🛡️ SMS Spam Detection | AI Cyber Security Project")
-
-import pandas as pd
-import pickle
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.naive_bayes import MultinomialNB
-
-# Load original dataset
-df = pd.read_csv("spam.csv", encoding="latin-1")
-
-# Select dataset columns
-if "v1" in df.columns and "v2" in df.columns:
-    df = df[["v1", "v2"]]
-    df.columns = ["label", "message"]
-else:
-    df = df.iloc[:, :2]
-    df.columns = ["label", "message"]
-
-# Clean dataset
-df = df.dropna()
-df["label"] = df["label"].astype(str).str.lower().str.strip()
-df["message"] = df["message"].astype(str)
-
-df = df[df["label"].isin(["spam", "ham"])]
-
-# Additional SMS training examples
-extra_data = [
-    ("spam", "Hi you won lottery"),
-    ("spam", "Congratulations you have won a lottery prize"),
-    ("spam", "You won 1000000 rupees claim now"),
-    ("spam", "Claim your free cash prize now"),
-    ("spam", "You are selected as a lucky winner"),
-    ("spam", "Click here to claim your reward"),
-    ("spam", "Urgent! You have won a free gift"),
-    ("spam", "Congratulations your number won a jackpot"),
-    ("spam", "You have won a cash prize"),
-    ("spam", "Free entry in a weekly lottery"),
-    ("ham", "Hi how are you"),
-    ("ham", "I will call you later"),
-    ("ham", "Where are you now"),
-    ("ham", "Meet me tomorrow"),
-    ("ham", "Thank you for your help"),
-    ("ham", "Are you coming to college today"),
-    ("ham", "Good morning have a nice day"),
-    ("ham", "I am waiting for you"),
-    ("ham", "Please send me the notes"),
-        ("spam", "You won lottery"),
-    ("spam", "You won a lottery"),
-    ("spam", "You have won lottery"),
-    ("spam", "Congratulations you won lottery"),
-    ("spam", "You are a lottery winner"),
-    ("spam", "You won 1000000 rupees"),
-    ("spam", "Claim your lottery prize now"),
-    ("spam", "Your lottery prize is waiting"),
-    ("ham", "See you soon")
-]
-
-extra_df = pd.DataFrame(
-    extra_data,
-    columns=["label", "message"]
-)
-
-df = pd.concat([df, extra_df], ignore_index=True)
-
-# Train model
-vectorizer = TfidfVectorizer(
-    lowercase=True,
-    ngram_range=(1, 2),
-    stop_words="english"
-)
-
-X = vectorizer.fit_transform(df["message"])
-y = df["label"]
-
-model = MultinomialNB()
-model.fit(X, y)
-
-# Save model and vectorizer
-data = {
-    "model": model,
-    "vectorizer": vectorizer
-}
-
-with open("sms_spam_model (1).pkl", "wb") as file:
-    pickle.dump(data, file)
-
-print("Model trained successfully!")
-print("Total SMS:", len(df))
-print("Model saved successfully!")
