@@ -100,6 +100,8 @@ def train_model():
         ("spam", "Click here to claim your reward"),
         ("spam", "You have won a free gift"),
         ("spam", "Your number won a cash prize"),
+        ("spam", "You won "),
+        ("spam", "congratulations you won a car"),
 
         ("ham", "Hi how are you"),
         ("ham", "I will call you later"),
